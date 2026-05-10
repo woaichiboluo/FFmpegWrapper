@@ -22,16 +22,16 @@ int main(int argc, char** argv) {
     // inputStreamId -> outputStreamId
     std::unordered_map<int, int> streamIndexMap;
     int outputStreamId = 0;
-    for (size_t i = 0; i < inputFormatContext.getStreamSize(); ++i) {
+    for (int i = 0; i < inputFormatContext.getStreamSize(); ++i) {
       auto stream = inputFormatContext.getStream(i);
       auto inStreamMediaType = stream->codecpar->codec_type;
       if (inStreamMediaType != AVMEDIA_TYPE_AUDIO &&
           inStreamMediaType != AVMEDIA_TYPE_VIDEO &&
           inStreamMediaType != AVMEDIA_TYPE_SUBTITLE) {
-        streamIndexMap[static_cast<int>(i)] = -1;
+        streamIndexMap[i] = -1;
         continue;
       }
-      streamIndexMap[static_cast<int>(i)] = outputStreamId++;
+      streamIndexMap[i] = outputStreamId++;
       auto outputStream = outputFormatContext.newStream();
       outputStream.codecParametersCopy(stream);
       // some container format (like mp4) require codec_tag to be 0

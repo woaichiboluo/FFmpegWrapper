@@ -1,0 +1,3 @@
+add_executable(dumpFrameInfo dumpFrameInfo.cpp)
+
+target_link_libraries(dumpFrameInfo FFmpegWrapper)

@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "libavformat/avio.h"
+#include "libavutil/avutil.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -64,11 +65,11 @@ void AVFormatContextWrap::dumpFormat(int index, const char* url) const {
   av_dump_format(m_ptr, index, url, m_type == Input ? 0 : 1);
 }
 
-size_t AVFormatContextWrap::getStreamSize() const {
+int AVFormatContextWrap::getStreamSize() const {
   return m_ptr ? m_ptr->nb_streams : 0;
 }
 
-AVStreamView AVFormatContextWrap::getStream(size_t index) const {
+AVStreamView AVFormatContextWrap::getStream(int index) const {
   FFMPEG_WRAPPER_TRUE_CHECK(index >= getStreamSize(),
                             "Stream index out of range", AVERROR(EINVAL));
   return AVStreamView(m_ptr->streams[index]);
@@ -107,4 +108,27 @@ void AVFormatContextWrap::writeTrailer() {
   REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
   FFMPEG_WRAPPER_ERROR_CHECK(av_write_trailer(m_ptr),
                              "Failed to write trailer");
+}
+
+void AVFormatContextWrap::seekFrame(int stream_index, int64_t timestamp,
+                                    int flags) {
+  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  FFMPEG_WRAPPER_ERROR_CHECK(
+      av_seek_frame(m_ptr, stream_index, timestamp, flags),
+      "Failed to seek frame");
+}
+
+void AVFormatContextWrap::seekFile(int stream_index, int64_t min_ts, int64_t ts,
+                                   int64_t max_ts, int flags) {
+  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  FFMPEG_WRAPPER_ERROR_CHECK(
+      avformat_seek_file(m_ptr, stream_index, min_ts, ts, max_ts, flags),
+      "Failed to seek file");
+}
+
+int AVFormatContextWrap::findBestStream(AVMediaType type) {
+  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  int stream_index = av_find_best_stream(m_ptr, type, -1, -1, nullptr, 0);
+  FFMPEG_WRAPPER_RET_ERROR_CHECK(stream_index, "Failed to find best stream");
+  return stream_index;
 }
