@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common.h"
+#include "Common.h"
 
 extern "C" {
 #include <libavformat/avformat.h>

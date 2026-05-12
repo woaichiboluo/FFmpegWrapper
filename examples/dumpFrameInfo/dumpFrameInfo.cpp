@@ -2,9 +2,9 @@
 #include <cstdio>
 #include <string_view>
 
-#include "AVFormatContextWrap.h"
-#include "AVPacketWrap.h"
-#include "TimeBaseUtils.h"
+#include "FFmpegWrapper/AVFormatContextWrap.h"
+#include "FFmpegWrapper/AVPacketWrap.h"
+#include "FFmpegWrapper/Utils.h"
 
 using namespace FFmpegWrapper;
 
@@ -35,6 +35,7 @@ int main(int argc, char** argv) {
     const AVMediaType mediaType = parseMediaTypeOrDefault(typeArg);
 
     auto inputFormatContext = AVFormatContextWrap::openInput(inputUrl);
+    inputFormatContext.findStreamInfo();
     const int streamIndex = inputFormatContext.findBestStream(mediaType);
     auto stream = inputFormatContext.getStream(streamIndex);
     auto timeBase = stream->time_base;

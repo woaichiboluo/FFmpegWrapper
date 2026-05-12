@@ -1,4 +1,4 @@
-#include "common.h"
+#include "FFmpegWrapper/Common.h"
 
 extern "C" {
 #include <libavdevice/avdevice.h>
@@ -20,6 +20,6 @@ FFmpegException::FFmpegException(const std::string& msg, int errCode)
   // char buf[512],errbuf[256];
   char errbuf[256];
   av_strerror(errCode, errbuf, sizeof(errbuf));
-  snprintf(m_msg, sizeof(m_msg), "%s code: %d errorMsg:%s", msg.data(), errCode,
-           errbuf);
+  snprintf(m_msg, sizeof(m_msg), "[%s] code: %d errorMsg:%s", msg.data(),
+           errCode, errbuf);
 }

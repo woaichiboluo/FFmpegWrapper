@@ -1,15 +1,19 @@
 #pragma once
 
+#include <exception>
+#include <string>
 #include <utility>
 
+#if defined(_WIN32)
 #define FFMPEG_WRAPPER_EXPORT __declspec(dllexport)
-
-#include <string>
+#else
+#define FFMPEG_WRAPPER_EXPORT
+#endif
 
 namespace FFmpegWrapper {
 
 template <typename T>
-class FFMPEG_WRAPPER_EXPORT ScopeGuard {
+class ScopeGuard {
  public:
   explicit ScopeGuard(T func) : m_func(std::move(func)) {}
   ~ScopeGuard() {
@@ -55,7 +59,7 @@ class FFMPEG_WRAPPER_EXPORT FFmpegException : public std::exception {
 
 #define FFMPEG_WRAPPER_TRUE_CHECK(value, msg, err) \
   do {                                             \
-    if (value) {                                   \
+    if ((value)) {                                 \
       throw FFmpegException((msg), (err));         \
     }                                              \
   } while (0)
@@ -63,7 +67,7 @@ class FFMPEG_WRAPPER_EXPORT FFmpegException : public std::exception {
 namespace detail {
 
 template <typename T, typename Deleter>
-class FFMPEG_WRAPPER_EXPORT WrapperBase {
+class WrapperBase {
  public:
   using element_type = T;
   using deleter_type = Deleter;
@@ -113,7 +117,7 @@ class FFMPEG_WRAPPER_EXPORT WrapperBase {
 };
 
 template <typename T>
-class FFMPEG_WRAPPER_EXPORT ViewBase {
+class ViewBase {
  public:
   ViewBase() = default;
   explicit ViewBase(T* ptr) : m_ptr(ptr) {}

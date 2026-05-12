@@ -18,15 +18,18 @@ add_compile_options(
   $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Werror>
 )
 
-include_directories(${FFMPEG_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/src)
+include_directories(${FFMPEG_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 add_library(FFmpegWrapper SHARED 
-    src/common.cpp
+    src/Common.cpp
     src/AVFormatContextWrap.cpp
     src/AVPacketWrap.cpp
+    src/AVCodecContextWrap.cpp
+    src/AVFrameWrap.cpp
+  src/AVAudioFifoWrap.cpp
 )
 
 target_link_libraries(FFmpegWrapper ${FFMPEG_LIBRARIES}/avdevice.lib 

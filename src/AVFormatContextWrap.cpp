@@ -1,8 +1,6 @@
-#include "AVFormatContextWrap.h"
+#include "FFmpegWrapper/AVFormatContextWrap.h"
 
-#include "common.h"
-#include "libavformat/avio.h"
-#include "libavutil/avutil.h"
+#include "FFmpegWrapper/Common.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -17,13 +15,11 @@ extern "C" {
 
 using namespace FFmpegWrapper;
 
-AVFormatContextWrap::AVFormatContextWrap(bool alloc)
-    : WrapperBase(nullptr, &avformat_free_context) {
-  if (!alloc) return;
-  m_ptr = avformat_alloc_context();
-  FFMPEG_WRAPPER_TRUE_CHECK(!m_ptr, "Failed to allocate AVFormatContext",
-                            AVERROR(ENOMEM));
-}
+AVFormatContextWrap::AVFormatContextWrap()
+    : WrapperBase(&avformat_free_context) {}
+
+AVFormatContextWrap::AVFormatContextWrap(AVFormatContext* ctx)
+    : WrapperBase(ctx, &avformat_free_context) {}
 
 AVFormatContextWrap::~AVFormatContextWrap() {
   if (!m_ptr) return;
@@ -52,12 +48,25 @@ AVFormatContextWrap AVFormatContextWrap::openOutput(const std::string& url) {
 }
 
 AVFormatContextWrap AVFormatContextWrap::openInput(const std::string& url) {
-  AVFormatContextWrap wrap(true);
+  AVFormatContext* ctx = avformat_alloc_context();
+  FFMPEG_WRAPPER_TRUE_CHECK(!ctx, "Failed to allocate AVFormatContext",
+                            AVERROR(ENOMEM));
+  ScopeGuard ctxGuard([ctx]() { avformat_free_context(ctx); });
   FFMPEG_WRAPPER_ERROR_CHECK(
-      avformat_open_input(&wrap.m_ptr, url.data(), nullptr, nullptr),
+      avformat_open_input(&ctx, url.data(), nullptr, nullptr),
       "Failed to open input");
+  ctxGuard.dismiss();
+  AVFormatContextWrap wrap(ctx);
   wrap.m_type = Input;
   return wrap;
+}
+
+void AVFormatContextWrap::findStreamInfo(AVDictionaryWrap* options) {
+  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  auto ptr = options ? options->get() : nullptr;
+  FFMPEG_WRAPPER_ERROR_CHECK(
+      avformat_find_stream_info(m_ptr, ptr ? &ptr : nullptr),
+      "Failed to find stream info");
 }
 
 void AVFormatContextWrap::dumpFormat(int index, const char* url) const {

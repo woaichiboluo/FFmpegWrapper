@@ -1,9 +1,8 @@
 #include <exception>
 #include <unordered_map>
 
-#include "AVFormatContextWrap.h"
-#include "AVPacketWrap.h"
-#include "libavutil/avutil.h"
+#include "FFmpegWrapper/AVFormatContextWrap.h"
+#include "FFmpegWrapper/AVPacketWrap.h"
 
 using namespace FFmpegWrapper;
 
@@ -17,6 +16,7 @@ int main(int argc, char** argv) {
     const char* inputUrl = argv[1];
     const char* outputUrl = argv[2];
     auto inputFormatContext = AVFormatContextWrap::openInput(inputUrl);
+    inputFormatContext.findStreamInfo();
     auto outputFormatContext = AVFormatContextWrap::openOutput(outputUrl);
     inputFormatContext.dumpFormat(0, inputUrl);
     // inputStreamId -> outputStreamId

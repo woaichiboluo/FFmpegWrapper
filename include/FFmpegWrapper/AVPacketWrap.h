@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common.h"
+#include "Common.h"
 
 struct AVPacket;
 struct AVRational;
@@ -14,7 +14,7 @@ struct FFMPEG_WRAPPER_EXPORT AVPacketUnrefHelper {
   AVPacketUnrefHelper(AVPacket* pkt) : packet(pkt) {}
 
   void operator()() const;
-  AVPacket* packet = nullptr;
+  AVPacket* packet{nullptr};
 };
 
 struct FFMPEG_WRAPPER_EXPORT AVPacketDeleter {
@@ -27,7 +27,7 @@ class FFMPEG_WRAPPER_EXPORT AVPacketWrap
     : public detail::WrapperBase<AVPacket, detail::AVPacketDeleter> {
  public:
   AVPacketWrap();
-  explicit AVPacketWrap(AVPacket* ptr);
+  AVPacketWrap(AVPacket* ptr);
   ~AVPacketWrap() override = default;
 
   AVPacketWrap(AVPacketWrap&&) noexcept = default;

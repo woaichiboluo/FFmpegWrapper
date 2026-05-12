@@ -3,7 +3,7 @@
 #include "AVDictionaryWrap.h"
 #include "AVPacketWrap.h"
 #include "AVStreamView.h"
-#include "common.h"
+#include "Common.h"
 
 struct AVFormatContext;
 
@@ -14,7 +14,8 @@ class FFMPEG_WRAPPER_EXPORT AVFormatContextWrap
  public:
   enum Type { Input, Output, NotSet };
 
-  explicit AVFormatContextWrap(bool alloc = false);
+  AVFormatContextWrap();
+  explicit AVFormatContextWrap(AVFormatContext* ctx);
   ~AVFormatContextWrap() override;
 
   AVFormatContextWrap(AVFormatContextWrap&&) noexcept = default;
@@ -24,6 +25,9 @@ class FFMPEG_WRAPPER_EXPORT AVFormatContextWrap
 
   static AVFormatContextWrap openOutput(const std::string& url);
   static AVFormatContextWrap openInput(const std::string& url);
+
+  // avformat_find_stream_info()
+  void findStreamInfo(AVDictionaryWrap* options = nullptr);
 
   // av_dump_format()
   void dumpFormat(int index, const char* url) const;

@@ -2,10 +2,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "AVFormatContextWrap.h"
-#include "AVPacketWrap.h"
-#include "TimeBaseUtils.h"
-#include "libavutil/avutil.h"
+#include "FFmpegWrapper/AVFormatContextWrap.h"
+#include "FFmpegWrapper/AVPacketWrap.h"
+#include "FFmpegWrapper/Utils.h"
 
 using namespace FFmpegWrapper;
 
@@ -31,6 +30,7 @@ int main(int argc, char** argv) {
            startSecond, startSecond + durationSecond);
 
     auto inputContext = AVFormatContextWrap::openInput(inputUrl);
+    inputContext.findStreamInfo();
     auto outputContext = AVFormatContextWrap::openOutput(outputUrl);
     std::unordered_map<int, std::pair<int, bool>>
         streamIndexMap;  // input stream index -> {output stream index,started}
