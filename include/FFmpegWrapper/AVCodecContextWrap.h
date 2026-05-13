@@ -1,14 +1,13 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 
 #include "AVCodecView.h"
 #include "AVDictionaryWrap.h"
 #include "AVFrameWrap.h"
 #include "AVPacketWrap.h"
 #include "Common.h"
-#include "FFmpegWrapper/AVPacketWrap.h"
-#include "FFmpegWrapper/Common.h"
 #include "Utils.h"
 
 struct AVCodecContext;
@@ -65,75 +64,133 @@ class FFMPEG_WRAPPER_EXPORT AVCodecContextWrap
   // for encoder: send frame, receive packet
   bool sendFrame(const AVFrameWrap& frame);
   bool receivePacket(AVPacketWrap& packet);
-
-  void flush();
 };
 
-class DecodeHelper {
- public:
-  struct DecodeContext {
-    friend class DecodeHelper;
-    AVCodecContextWrap& ctx;
-    const AVPacketWrap& inPacket;
-    AVFrameWrap& outFrame;
+namespace detail {
 
-    DecodeContext(AVCodecContextWrap& ctx, const AVPacketWrap& packet,
-                  AVFrameWrap& frame)
-        : ctx(ctx), inPacket(packet), outFrame(frame) {}
+class CodecBase {
+ public:
+  CodecBase() = default;
+  virtual ~CodecBase() = default;
+
+  CodecBase(const CodecBase&) = delete;
+  CodecBase& operator=(const CodecBase&) = delete;
+
+  CodecBase(CodecBase&&) noexcept = default;
+  CodecBase& operator=(CodecBase&&) noexcept = default;
+
+  AVCodecContextWrap& getCodecContextMutable() {
+    FFMPEG_WRAPPER_TRUE_CHECK(!m_ctx, "Codec context is not initialized",
+                              AVERROR(EINVAL));
+    return *m_ctx;
+  }
+
+  const AVCodecContextWrap& getCodecContext() const {
+    FFMPEG_WRAPPER_TRUE_CHECK(!m_ctx, "Codec context is not initialized",
+                              AVERROR(EINVAL));
+    return *m_ctx;
+  }
+
+  struct CbData {
+    friend class CodecBase;
+    AVCodecContextWrap& ctx;
+    AVPacketWrap& packet;
+    AVFrameWrap& frame;
+
+    CbData(AVCodecContextWrap& ctx, AVPacketWrap& packet, AVFrameWrap& frame)
+        : ctx(ctx), packet(packet), frame(frame) {}
 
     bool isFlush() const { return m_flush; }
 
    private:
-    void setFlush(bool flush) { m_flush = flush; }
     bool m_flush{false};
   };
 
-  DecodeHelper(AVCodecContextWrap& ctx) : m_ctx(ctx) {}
-
-  void setDecodeCallback(std::function<void(DecodeContext&)> callback) {
-    m_decodeCallback = std::move(callback);
+ protected:
+  void initCodecContext(const AVCodecView& codec) {
+    FFMPEG_WRAPPER_TRUE_CHECK(m_ctx, "Codec context is already initialized",
+                              AVERROR(EINVAL));
+    m_ctx = std::make_unique<AVCodecContextWrap>(codec);
   }
 
+  void setCodecContextFlush(CbData& data, bool flush) { data.m_flush = flush; }
+
+  void setCallback(std::function<void(CbData&)> callback) {
+    m_callback = std::move(callback);
+  }
+
+  void doCallback(CbData& data) {
+    if (m_callback) m_callback(data);
+  }
+
+  AVFrameWrap m_frame;
+  AVPacketWrap m_packet;
+
+ private:
+  std::unique_ptr<AVCodecContextWrap> m_ctx;
+  std::function<void(CbData&)> m_callback;
+};
+
+}  // namespace detail
+
+class CodecDecoder : public detail::CodecBase {
+ public:
+  using DecodeData = detail::CodecBase::CbData;
+
+  CodecDecoder() = default;
+
+  CodecDecoder(CodecDecoder&&) noexcept = default;
+  CodecDecoder& operator=(CodecDecoder&&) noexcept = default;
+
+  void setDecodeCallback(std::function<void(CbData&)> callback) {
+    setCallback(std::move(callback));
+  }
+
+  void initDecoder(const AVCodecView& codec) {
+    FFMPEG_WRAPPER_TRUE_CHECK(
+        !codec.isDecoder(), "Provided codec is not a decoder", AVERROR(EINVAL));
+    initCodecContext(codec);
+  }
+
+  // when in decode,should not modify packet
   void decode(const AVPacketWrap& packet) { decodeInternal(packet, false); }
 
   void flush() { decodeInternal(nullptr, true); }
 
  private:
   void decodeInternal(const AVPacketWrap& packet, bool isFlush) {
-    AVFrameWrap frame;
-    DecodeContext context(m_ctx, packet, frame);
-    m_ctx.sendPacket(packet);
-    while (m_ctx.receiveFrame(frame)) {
-      auto guard = frame.scopeUnref();
-      if (m_decodeCallback) m_decodeCallback(context);
+    auto& ctx = getCodecContextMutable();
+    DecodeData cbData(ctx, const_cast<AVPacketWrap&>(packet), m_frame);
+    ctx.sendPacket(packet);
+    while (ctx.receiveFrame(m_frame)) {
+      auto guard = m_frame.scopeUnref();
+      doCallback(cbData);
     }
-    context.setFlush(true);
-    if (isFlush && m_decodeCallback) {
-      m_decodeCallback(context);
+    setCodecContextFlush(cbData, isFlush);
+    if (isFlush) {
+      doCallback(cbData);
     }
   }
-
-  std::function<void(DecodeContext&)> m_decodeCallback;
-  AVCodecContextWrap& m_ctx;
 };
 
-class EncoderHelper {
+class CodecEncoder : public detail::CodecBase {
  public:
-  struct EncodeContext {
-    friend class EncoderHelper;
-    AVCodecContextWrap& ctx;
-    const AVFrameWrap& inFrame;
-    AVPacketWrap& outPacket;
+  using EncodeData = detail::CodecBase::CbData;
 
-    EncodeContext(AVCodecContextWrap& ctx, const AVFrameWrap& frame,
-                  AVPacketWrap& packet)
-        : ctx(ctx), inFrame(frame), outPacket(packet) {}
-  };
+  CodecEncoder() = default;
 
-  EncoderHelper(AVCodecContextWrap& ctx) : m_ctx(ctx) {}
+  CodecEncoder(CodecEncoder&&) noexcept = default;
+  CodecEncoder& operator=(CodecEncoder&&) noexcept = default;
 
-  void setEncodeCallback(std::function<void(EncodeContext&)> callback) {
-    m_encodeCallback = std::move(callback);
+  void setEncodeCallback(std::function<void(EncodeData&)> callback) {
+    setCallback(std::move(callback));
+  }
+
+  void initEncoder(const AVCodecView& codec) {
+    FFMPEG_WRAPPER_TRUE_CHECK(!codec.isEncoder(),
+                              "Provided codec is not an encoder",
+                              AVERROR(EINVAL));
+    initCodecContext(codec);
   }
 
   void encode(const AVFrameWrap& frame) { encodeInternal(frame); }
@@ -141,17 +198,15 @@ class EncoderHelper {
 
  private:
   void encodeInternal(const AVFrameWrap& frame) {
+    auto& ctx = getCodecContextMutable();
     AVPacketWrap packet;
-    EncodeContext context(m_ctx, frame, packet);
-    m_ctx.sendFrame(frame);
-    while (m_ctx.receivePacket(packet)) {
+    EncodeData cbData(ctx, packet, const_cast<AVFrameWrap&>(frame));
+    ctx.sendFrame(frame);
+    while (ctx.receivePacket(packet)) {
       auto guard = packet.scopeUnref();
-      if (m_encodeCallback) m_encodeCallback(context);
+      doCallback(cbData);
     }
   }
-
-  AVCodecContextWrap& m_ctx;
-  std::function<void(EncodeContext&)> m_encodeCallback;
 };
 
 }  // namespace FFmpegWrapper

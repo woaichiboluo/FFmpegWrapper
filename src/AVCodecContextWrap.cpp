@@ -26,6 +26,8 @@ AVCodecView AVCodecContextWrap::getCodec() const {
 }
 
 void AVCodecContextWrap::open(AVDictionaryWrap* options) {
+  FFMPEG_WRAPPER_TRUE_CHECK(isOpened(), "AVCodecContext is not initialized",
+                            AVERROR(EINVAL));
   auto dictPtr = options ? options->get() : nullptr;
   FFMPEG_WRAPPER_ERROR_CHECK(
       avcodec_open2(m_ptr, nullptr, options ? &dictPtr : nullptr),

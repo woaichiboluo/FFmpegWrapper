@@ -60,3 +60,25 @@ void AVFrameWrap::getBuffer() {
   FFMPEG_WRAPPER_ERROR_CHECK(av_frame_get_buffer(m_ptr, 0),
                              "Failed to allocate buffer for AVFrame");
 }
+
+void AVFrameWrap::dumpFrameToRawBytes(std::vector<uint8_t>& out) const {
+  if (!m_ptr) return;
+  bool isVideo = m_ptr->width > 0 && m_ptr->height > 0;
+  bool isAudio = m_ptr->nb_samples > 0 && m_ptr->ch_layout.nb_channels > 0;
+  if (isVideo) {
+    int ret = CodecUtils::imageCopyToBuffer(
+        out, m_ptr->data, m_ptr->linesize,
+        static_cast<AVPixelFormat>(m_ptr->format), m_ptr->width, m_ptr->height);
+    FFMPEG_WRAPPER_RET_ERROR_CHECK(ret,
+                                   "Failed to dump video frame to raw bytes");
+  } else if (isAudio) {
+    int ret = CodecUtils::audioCopyToBuffer(
+        out, m_ptr->data, m_ptr->linesize,
+        static_cast<AVSampleFormat>(m_ptr->format), m_ptr->nb_samples,
+        m_ptr->ch_layout.nb_channels);
+    FFMPEG_WRAPPER_RET_ERROR_CHECK(ret,
+                                   "Failed to dump audio frame to raw bytes");
+  } else {
+    FFMPEG_WRAPPER_RET_ERROR_CHECK(AVERROR(EINVAL), "Unsupported frame type");
+  }
+}

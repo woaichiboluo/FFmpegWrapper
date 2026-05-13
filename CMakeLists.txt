@@ -16,6 +16,7 @@ add_compile_options(
   $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall>
   $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wextra>
   $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Werror>
+  -D_CRT_SECURE_NO_WARNINGS
 )
 
 include_directories(${FFMPEG_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include)

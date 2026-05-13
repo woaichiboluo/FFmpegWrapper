@@ -1,12 +1,16 @@
 #pragma once
 
+#include <cstdint>
+#include <cstring>
 #include <type_traits>
+#include <vector>
 
 #include "Common.h"
 
 extern "C" {
 #include "libavutil/avutil.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/rational.h"
@@ -84,6 +88,92 @@ T useSourceOrDefault(T fmt, const T* codecSupportedList, T defaultFmt) {
   return isCodecSupported(fmt, codecSupportedList) ? fmt : defaultFmt;
 }
 
+inline int getPerImageSize(AVPixelFormat pixFmt, int width, int height) {
+  return av_image_get_buffer_size(pixFmt, width, height, 1);
+}
+
+inline int getPerAudioFrameSize(int* linesize, AVSampleFormat sampleFmt,
+                                int nbSamples, int channelCount) {
+  // NOTE: av_samples_get_buffer_size() treats linesize as an OUT parameter.
+  return av_samples_get_buffer_size(linesize, channelCount, nbSamples,
+                                    sampleFmt, 1);
+}
+
+inline bool isAudioPlanar(AVSampleFormat sampleFmt) {
+  return av_sample_fmt_is_planar(sampleFmt) != 0;
+}
+
+inline int getBytesPerSample(AVSampleFormat sampleFmt) {
+  return av_get_bytes_per_sample(sampleFmt);
+}
+
+inline int imageCopyToBuffer(std::vector<uint8_t>& dst,
+                             const uint8_t* const* srcData,
+                             const int* srcLinesize, enum AVPixelFormat pixFmt,
+                             int width, int height) {
+  int requiredSize = getPerImageSize(pixFmt, width, height);
+  if (requiredSize < 0) return -1;
+  dst.resize(requiredSize);
+  return av_image_copy_to_buffer(dst.data(), static_cast<int>(dst.size()),
+                                 srcData, srcLinesize, pixFmt, width, height,
+                                 1);
+}
+
+inline AVSampleFormat getPackedFmt(AVSampleFormat sampleFmt) {
+  return av_get_packed_sample_fmt(sampleFmt);
+}
+
+inline const char* getSampleFmtName(AVSampleFormat sampleFmt) {
+  return av_get_sample_fmt_name(sampleFmt);
+}
+
+inline int audioCopyToBuffer(std::vector<uint8_t>& dst,
+                             const uint8_t* const* srcData,
+                             const int* srcLinesize,
+                             enum AVSampleFormat sampleFmt, int nbSamples,
+                             int channelCount) {
+  if (!srcData) return -1;
+  if (nbSamples <= 0 || channelCount <= 0) return -1;
+
+  // This helper always outputs PACKED(interleaved) PCM.
+  const AVSampleFormat packedFmt = av_get_packed_sample_fmt(sampleFmt);
+  if (packedFmt == AV_SAMPLE_FMT_NONE) return -1;
+
+  int requiredSize =
+      getPerAudioFrameSize(nullptr, packedFmt, nbSamples, channelCount);
+  if (requiredSize < 0) return -1;
+  dst.resize(static_cast<size_t>(requiredSize));
+
+  if (isAudioPlanar(sampleFmt)) {
+    // planar ch 2 :[0] left left left [1] right right right
+    // convert to interleaved: left right left right left right
+    int perSampleSize = getBytesPerSample(sampleFmt);
+    uint8_t* dstPtr = dst.data();
+    for (int n = 0; n < nbSamples; ++n) {
+      for (int ch = 0; ch < channelCount; ++ch) {
+        if (!srcData[ch]) return -1;
+        const uint8_t* src = srcData[ch] + n * perSampleSize;
+        memcpy(dstPtr, src, static_cast<size_t>(perSampleSize));
+        dstPtr += perSampleSize;
+      }
+    }
+  } else {
+    if (!srcData[0]) return -1;
+    // Packed input: copy as much as is safely available.
+    size_t copyBytes = dst.size();
+    if (srcLinesize) {
+      if (srcLinesize[0] <= 0) return -1;
+      copyBytes = std::min(copyBytes, static_cast<size_t>(srcLinesize[0]));
+    }
+    memcpy(dst.data(), srcData[0], copyBytes);
+    // for alignment reasons
+    if (copyBytes < dst.size()) {
+      memset(dst.data() + copyBytes, 0, dst.size() - copyBytes);
+    }
+  }
+  return static_cast<int>(dst.size());
+}
+
 }  // namespace CodecUtils
 
 struct FFMPEG_WRAPPER_EXPORT VideoBaseInfo {
@@ -93,6 +183,13 @@ struct FFMPEG_WRAPPER_EXPORT VideoBaseInfo {
   AVRational frameRate;
   AVColorRange colorRange;
   AVColorSpace colorSpace;
+
+  int getBytesPerPixel() const {
+    return av_image_get_buffer_size(pixFmt, width, height, 1) /
+           (width * height);
+  }
+
+  const char* getPixFmtName() const { return av_get_pix_fmt_name(pixFmt); }
 
   std::string dump() const {
     const char* pixFmtName = av_get_pix_fmt_name(pixFmt);
@@ -125,6 +222,42 @@ struct FFMPEG_WRAPPER_EXPORT AudioBaseInfo {
   }
 
   int getChannelCount() const { return channelLayout.nb_channels; }
+
+  int getBytesPerSample() const {
+    return av_get_bytes_per_sample(sampleFmt) * getChannelCount();
+  }
+
+  const char* getSampleFmtName() const {
+    return av_get_sample_fmt_name(sampleFmt);
+  }
+
+  const char* getPackedSampleFmtName() const {
+    AVSampleFormat packedFmt = av_get_packed_sample_fmt(sampleFmt);
+    return av_get_sample_fmt_name(packedFmt);
+  }
+
+  // Returns ffplay/ffmpeg raw PCM demuxer format name for the *packed* sample
+  // format (e.g. "s16le", "f32le").
+  // Note: raw PCM is byte-order sensitive; for typical Windows builds this is
+  // little-endian.
+  const char* getFFplayPackedPcmFormatName() const {
+    switch (av_get_packed_sample_fmt(sampleFmt)) {
+      case AV_SAMPLE_FMT_U8:
+        return "u8";
+      case AV_SAMPLE_FMT_S16:
+        return "s16le";
+      case AV_SAMPLE_FMT_S32:
+        return "s32le";
+      case AV_SAMPLE_FMT_FLT:
+        return "f32le";
+      case AV_SAMPLE_FMT_DBL:
+        return "f64le";
+      default:
+        return nullptr;
+    }
+  }
+
+  bool isPlanar() const { return av_sample_fmt_is_planar(sampleFmt); }
 
   std::string dump() const {
     const char* sampleFmtName = av_get_sample_fmt_name(sampleFmt);

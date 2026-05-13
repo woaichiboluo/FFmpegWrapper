@@ -26,18 +26,22 @@ int main(int argc, char** argv) {
     // prepare decoder
     auto inputDecoderCodec =
         AVCodecView::findDecoder(inputStream->codecpar->codec_id);
-    auto inputDecoderContext = AVCodecContextWrap(inputDecoderCodec);
+    CodecDecoder inputDecoder;
+    inputDecoder.initDecoder(inputDecoderCodec);
+    auto& inputDecoderContext = inputDecoder.getCodecContextMutable();
     inputDecoderContext.open(inputStream->codecpar);
     auto inputAudioBaseInfo = inputDecoderContext.getAudioBaseInfo();
     printf("Input: %s\n", inputAudioBaseInfo.dump().data());
 
-    // prepare encoder
+    // // prepare encoder
     auto outputEncoderCodec = AVCodecView::findEncoder(AV_CODEC_ID_AAC);
-    auto outputEncoderContext = AVCodecContextWrap(outputEncoderCodec);
+    CodecEncoder outputEncoder;
+    outputEncoder.initEncoder(outputEncoderCodec);
     auto outputAudioBaseInfo = inputAudioBaseInfo;
     outputEncoderCodec.checkAudioBaseInfo(outputAudioBaseInfo);
-
+    auto& outputEncoderContext = outputEncoder.getCodecContextMutable();
     printf("Output: %s\n", outputAudioBaseInfo.dump().data());
+
     outputEncoderContext.setAudioBaseInfo(outputAudioBaseInfo);
     // Encoder timestamps are in samples when using 1/sampleRate time_base.
     outputEncoderContext->time_base = {1, outputAudioBaseInfo.sampleRate};
@@ -51,11 +55,10 @@ int main(int argc, char** argv) {
     outputStream->codecpar->codec_tag = 0;
     outputContext.writeHeader();
 
-    // set encoder callbacks
-    EncoderHelper encoder(outputEncoderContext);
-    encoder.setEncodeCallback([&](EncoderHelper::EncodeContext& context) {
-      context.outPacket->stream_index = outputStream->index;
-      outputContext.interleavedWriteFrame(context.outPacket);
+    // // set encoder callbacks
+    outputEncoder.setEncodeCallback([&](CodecEncoder::EncodeData& cbData) {
+      cbData.packet->stream_index = outputStream->index;
+      outputContext.interleavedWriteFrame(cbData.packet);
     });
 
     // prepare fifo
@@ -68,18 +71,18 @@ int main(int argc, char** argv) {
     frameForFifo.getBuffer();
     int64_t writedSamples = 0;
 
-    DecodeHelper decoder(inputDecoderContext);
-    decoder.setDecodeCallback([&](DecodeHelper::DecodeContext& context) {
-      if (!context.isFlush()) {
-        printf("Decoded frame, nb_samples: %d\n", context.outFrame->nb_samples);
-        void** inData = reinterpret_cast<void**>(context.outFrame->data);
-        audioFifo.ensureEnoughWrite(inData, context.outFrame->nb_samples);
+    inputDecoder.setDecodeCallback([&](CodecDecoder::DecodeData& cbData) {
+      if (!cbData.isFlush()) {
+        auto& outFrame = cbData.frame;
+        printf("Decoded frame, nb_samples: %d\n", outFrame->nb_samples);
+        void** inData = reinterpret_cast<void**>(outFrame->data);
+        audioFifo.ensureEnoughWrite(inData, outFrame->nb_samples);
         while (audioFifo.size() >= outputEncoderContext->frame_size) {
           void** outData = reinterpret_cast<void**>(frameForFifo->data);
           audioFifo.read(outData, frameForFifo->nb_samples);
           frameForFifo->pts = writedSamples;
           writedSamples += frameForFifo->nb_samples;
-          encoder.encode(frameForFifo);
+          outputEncoder.encode(frameForFifo);
         }
       } else {
         // flush decoder
@@ -93,9 +96,9 @@ int main(int argc, char** argv) {
           frameForFifo->nb_samples = nbSamples;
           frameForFifo->pts = writedSamples;
           writedSamples += nbSamples;
-          encoder.encode(frameForFifo);
+          outputEncoder.encode(frameForFifo);
         }
-        encoder.flush();
+        outputEncoder.flush();
       }
     });
 
@@ -104,16 +107,15 @@ int main(int argc, char** argv) {
     while (inputContext.readFrame(packet)) {
       auto guard = packet.scopeUnref();
       if (packet->stream_index == audioStreamIndex) {
-        decoder.decode(packet);
+        inputDecoder.decode(packet);
       }
     }
 
-    decoder.flush();
+    inputDecoder.flush();
 
     outputContext.writeTrailer();
 
     printf("Transcoding completed successfully.\n");
-
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());
   }

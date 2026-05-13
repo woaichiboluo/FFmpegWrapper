@@ -51,11 +51,9 @@ AVFormatContextWrap AVFormatContextWrap::openInput(const std::string& url) {
   AVFormatContext* ctx = avformat_alloc_context();
   FFMPEG_WRAPPER_TRUE_CHECK(!ctx, "Failed to allocate AVFormatContext",
                             AVERROR(ENOMEM));
-  ScopeGuard ctxGuard([ctx]() { avformat_free_context(ctx); });
   FFMPEG_WRAPPER_ERROR_CHECK(
       avformat_open_input(&ctx, url.data(), nullptr, nullptr),
       "Failed to open input");
-  ctxGuard.dismiss();
   AVFormatContextWrap wrap(ctx);
   wrap.m_type = Input;
   return wrap;

@@ -41,6 +41,8 @@ class FFMPEG_WRAPPER_EXPORT AVFrameWrap
 
   void unref();
 
+  void dumpFrameToRawBytes(std::vector<uint8_t>& out) const;
+
   [[nodiscard]] ScopeGuard<detail::AVFrameUndefHelper> scopeUnref();
 };
 

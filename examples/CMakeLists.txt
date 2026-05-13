@@ -5,3 +5,5 @@ add_subdirectory(remuxing)
 add_subdirectory(dumpFrameInfo)
 
 add_subdirectory(transcode)
+
+add_subdirectory(decode)
