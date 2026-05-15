@@ -1,21 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
 #include <vector>
 
 #include "Common.h"
-
-extern "C" {
-#include "libavutil/avutil.h"
-#include "libavutil/channel_layout.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/pixfmt.h"
-#include "libavutil/rational.h"
-#include "libavutil/samplefmt.h"
-}
 
 namespace FFmpegWrapper {
 
@@ -148,6 +139,7 @@ inline int audioCopyToBuffer(std::vector<uint8_t>& dst,
     // planar ch 2 :[0] left left left [1] right right right
     // convert to interleaved: left right left right left right
     int perSampleSize = getBytesPerSample(sampleFmt);
+    if (perSampleSize <= 0) return -1;
     uint8_t* dstPtr = dst.data();
     for (int n = 0; n < nbSamples; ++n) {
       for (int ch = 0; ch < channelCount; ++ch) {
@@ -159,17 +151,12 @@ inline int audioCopyToBuffer(std::vector<uint8_t>& dst,
     }
   } else {
     if (!srcData[0]) return -1;
-    // Packed input: copy as much as is safely available.
-    size_t copyBytes = dst.size();
-    if (srcLinesize) {
-      if (srcLinesize[0] <= 0) return -1;
-      copyBytes = std::min(copyBytes, static_cast<size_t>(srcLinesize[0]));
+    // Packed input already has the raw PCM payload in interleaved order.
+    if (srcLinesize && srcLinesize[0] > 0 &&
+        static_cast<size_t>(srcLinesize[0]) < dst.size()) {
+      return -1;
     }
-    memcpy(dst.data(), srcData[0], copyBytes);
-    // for alignment reasons
-    if (copyBytes < dst.size()) {
-      memset(dst.data() + copyBytes, 0, dst.size() - copyBytes);
-    }
+    memcpy(dst.data(), srcData[0], dst.size());
   }
   return static_cast<int>(dst.size());
 }

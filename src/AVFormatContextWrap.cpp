@@ -2,10 +2,6 @@
 
 #include "FFmpegWrapper/Common.h"
 
-extern "C" {
-#include <libavformat/avformat.h>
-}
-
 #define REQUIRE_NOT_EXPECTED_TYPE(type, expected)                    \
   do {                                                               \
     if ((type) == (expected)) {                                      \
@@ -15,52 +11,55 @@ extern "C" {
 
 using namespace FFmpegWrapper;
 
-AVFormatContextWrap::AVFormatContextWrap()
-    : WrapperBase(&avformat_free_context) {}
-
-AVFormatContextWrap::AVFormatContextWrap(AVFormatContext* ctx)
-    : WrapperBase(ctx, &avformat_free_context) {}
-
-AVFormatContextWrap::~AVFormatContextWrap() {
-  if (!m_ptr) return;
-  if (m_type == Output) {
-    if (m_ptr->oformat && !(m_ptr->oformat->flags & AVFMT_NOFILE)) {
-      avio_closep(&m_ptr->pb);
+void detail::AVFormatContextDeleter::operator()(
+    AVFormatContext*& ctx) const noexcept {
+  if (!ctx) return;
+  if (type == Output) {
+    if (ctx->oformat && !(ctx->oformat->flags & AVFMT_NOFILE)) {
+      avio_closep(&ctx->pb);
     }
-  } else if (m_type == Input) {
-    avformat_close_input(&m_ptr);
+    avformat_free_context(ctx);
+    ctx = nullptr;
+  } else if (type == Input) {
+    avformat_close_input(&ctx);
+  } else {
+    avformat_free_context(ctx);
+    ctx = nullptr;
   }
 }
+
+AVFormatContextWrap::AVFormatContextWrap()
+    : WrapperBase(detail::AVFormatContextDeleter{}) {}
+
+AVFormatContextWrap::AVFormatContextWrap(AVFormatContext* ctx, Type type)
+    : WrapperBase(ctx, detail::AVFormatContextDeleter{type}) {}
 
 AVFormatContextWrap AVFormatContextWrap::openOutput(const std::string& url) {
   AVFormatContextWrap wrap;
   FFMPEG_WRAPPER_ERROR_CHECK(
       avformat_alloc_output_context2(&wrap.m_ptr, nullptr, nullptr, url.data()),
       "Failed to allocate AVFormatContext");
+  wrap.m_deleter.type = Output;
   // 判断是否需要打开输出IO，如果oformat的flags中有AVFMT_NOFILE标志，说明不需要打开IO
   if (wrap->oformat && !(wrap->oformat->flags & AVFMT_NOFILE)) {
     FFMPEG_WRAPPER_ERROR_CHECK(
         avio_open2(&wrap->pb, url.data(), AVIO_FLAG_WRITE, nullptr, nullptr),
         "Failed to open output IO");
   }
-  wrap.m_type = Output;
   return wrap;
 }
 
 AVFormatContextWrap AVFormatContextWrap::openInput(const std::string& url) {
-  AVFormatContext* ctx = avformat_alloc_context();
-  FFMPEG_WRAPPER_TRUE_CHECK(!ctx, "Failed to allocate AVFormatContext",
-                            AVERROR(ENOMEM));
+  AVFormatContext* ctx = nullptr;
   FFMPEG_WRAPPER_ERROR_CHECK(
       avformat_open_input(&ctx, url.data(), nullptr, nullptr),
       "Failed to open input");
-  AVFormatContextWrap wrap(ctx);
-  wrap.m_type = Input;
+  AVFormatContextWrap wrap(ctx, Input);
   return wrap;
 }
 
 void AVFormatContextWrap::findStreamInfo(AVDictionaryWrap* options) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   auto ptr = options ? options->get() : nullptr;
   FFMPEG_WRAPPER_ERROR_CHECK(
       avformat_find_stream_info(m_ptr, ptr ? &ptr : nullptr),
@@ -68,8 +67,8 @@ void AVFormatContextWrap::findStreamInfo(AVDictionaryWrap* options) {
 }
 
 void AVFormatContextWrap::dumpFormat(int index, const char* url) const {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
-  av_dump_format(m_ptr, index, url, m_type == Input ? 0 : 1);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
+  av_dump_format(m_ptr, index, url, getType() == Input ? 0 : 1);
 }
 
 int AVFormatContextWrap::getStreamSize() const {
@@ -83,7 +82,7 @@ AVStreamView AVFormatContextWrap::getStream(int index) const {
 }
 
 AVStreamView AVFormatContextWrap::newStream(const AVCodec* codec) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   AVStream* stream = avformat_new_stream(m_ptr, codec);
   FFMPEG_WRAPPER_TRUE_CHECK(!stream, "Failed to create new stream",
                             AVERROR(ENOMEM));
@@ -91,7 +90,7 @@ AVStreamView AVFormatContextWrap::newStream(const AVCodec* codec) {
 }
 
 bool AVFormatContextWrap::readFrame(AVPacketWrap& packet) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   int ret = av_read_frame(m_ptr, packet.get());
   if (ret == AVERROR_EOF) return false;
   FFMPEG_WRAPPER_RET_ERROR_CHECK(ret, "Failed to read frame");
@@ -99,27 +98,27 @@ bool AVFormatContextWrap::readFrame(AVPacketWrap& packet) {
 }
 
 void AVFormatContextWrap::writeHeader(AVDictionaryWrap options) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   auto ptr = options.get();
   FFMPEG_WRAPPER_ERROR_CHECK(avformat_write_header(m_ptr, ptr ? &ptr : nullptr),
                              "Failed to write header");
 }
 
 void AVFormatContextWrap::interleavedWriteFrame(AVPacketWrap& packet) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   FFMPEG_WRAPPER_ERROR_CHECK(av_interleaved_write_frame(m_ptr, packet.get()),
                              "Failed to write frame");
 }
 
 void AVFormatContextWrap::writeTrailer() {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   FFMPEG_WRAPPER_ERROR_CHECK(av_write_trailer(m_ptr),
                              "Failed to write trailer");
 }
 
 void AVFormatContextWrap::seekFrame(int stream_index, int64_t timestamp,
                                     int flags) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   FFMPEG_WRAPPER_ERROR_CHECK(
       av_seek_frame(m_ptr, stream_index, timestamp, flags),
       "Failed to seek frame");
@@ -127,14 +126,14 @@ void AVFormatContextWrap::seekFrame(int stream_index, int64_t timestamp,
 
 void AVFormatContextWrap::seekFile(int stream_index, int64_t min_ts, int64_t ts,
                                    int64_t max_ts, int flags) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   FFMPEG_WRAPPER_ERROR_CHECK(
       avformat_seek_file(m_ptr, stream_index, min_ts, ts, max_ts, flags),
       "Failed to seek file");
 }
 
 int AVFormatContextWrap::findBestStream(AVMediaType type) {
-  REQUIRE_NOT_EXPECTED_TYPE(m_type, NotSet);
+  REQUIRE_NOT_EXPECTED_TYPE(getType(), NotSet);
   int stream_index = av_find_best_stream(m_ptr, type, -1, -1, nullptr, 0);
   FFMPEG_WRAPPER_RET_ERROR_CHECK(stream_index, "Failed to find best stream");
   return stream_index;

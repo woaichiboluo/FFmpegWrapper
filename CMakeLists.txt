@@ -30,7 +30,8 @@ add_library(FFmpegWrapper SHARED
     src/AVPacketWrap.cpp
     src/AVCodecContextWrap.cpp
     src/AVFrameWrap.cpp
-  src/AVAudioFifoWrap.cpp
+    src/AVAudioFifoWrap.cpp
+    src/SwrContextWrap.cpp
 )
 
 target_link_libraries(FFmpegWrapper ${FFMPEG_LIBRARIES}/avdevice.lib 

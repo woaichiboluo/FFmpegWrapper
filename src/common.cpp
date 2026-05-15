@@ -1,9 +1,6 @@
 #include "FFmpegWrapper/Common.h"
 
-extern "C" {
-#include <libavdevice/avdevice.h>
-#include <libavutil/error.h>
-}
+#include <cstdio>
 
 using namespace FFmpegWrapper;
 

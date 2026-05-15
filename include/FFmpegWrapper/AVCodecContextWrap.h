@@ -17,7 +17,7 @@ namespace FFmpegWrapper {
 namespace detail {
 
 struct FFMPEG_WRAPPER_EXPORT AVCodecContextDeleter {
-  void operator()(AVCodecContext* ctx) const;
+  void operator()(AVCodecContext*& ctx) const;
 };
 
 }  // namespace detail
@@ -136,6 +136,7 @@ class CodecBase {
 class CodecDecoder : public detail::CodecBase {
  public:
   using DecodeData = detail::CodecBase::CbData;
+  using Callback = std::function<void(DecodeData&)>;
 
   CodecDecoder() = default;
 
@@ -146,10 +147,11 @@ class CodecDecoder : public detail::CodecBase {
     setCallback(std::move(callback));
   }
 
-  void initDecoder(const AVCodecView& codec) {
+  auto& initDecoderContext(const AVCodecView& codec) {
     FFMPEG_WRAPPER_TRUE_CHECK(
         !codec.isDecoder(), "Provided codec is not a decoder", AVERROR(EINVAL));
     initCodecContext(codec);
+    return getCodecContextMutable();
   }
 
   // when in decode,should not modify packet
@@ -176,21 +178,23 @@ class CodecDecoder : public detail::CodecBase {
 class CodecEncoder : public detail::CodecBase {
  public:
   using EncodeData = detail::CodecBase::CbData;
+  using Callback = std::function<void(EncodeData&)>;
 
   CodecEncoder() = default;
 
   CodecEncoder(CodecEncoder&&) noexcept = default;
   CodecEncoder& operator=(CodecEncoder&&) noexcept = default;
 
-  void setEncodeCallback(std::function<void(EncodeData&)> callback) {
+  void setEncodeCallback(Callback callback) {
     setCallback(std::move(callback));
   }
 
-  void initEncoder(const AVCodecView& codec) {
+  auto& initEncoder(const AVCodecView& codec) {
     FFMPEG_WRAPPER_TRUE_CHECK(!codec.isEncoder(),
                               "Provided codec is not an encoder",
                               AVERROR(EINVAL));
     initCodecContext(codec);
+    return getCodecContextMutable();
   }
 
   void encode(const AVFrameWrap& frame) { encodeInternal(frame); }

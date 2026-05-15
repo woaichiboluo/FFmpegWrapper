@@ -18,7 +18,7 @@ struct FFMPEG_WRAPPER_EXPORT AVPacketUnrefHelper {
 };
 
 struct FFMPEG_WRAPPER_EXPORT AVPacketDeleter {
-  void operator()(AVPacket* pkt) const;
+  void operator()(AVPacket*& pkt) const;
 };
 
 }  // namespace detail

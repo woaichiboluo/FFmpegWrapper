@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     printf("Seeking to start position: %lld (%.2fs)\n", (long long)startTs,
            TimeBaseUtils::tsToSeconds(startTs, AV_TIME_BASE_Q));
 
-    // streamId为-1的时候，timebase使用AV_TIME_BASE，ffmpeg会自动将seek_target转换为对应流的timebase
+    // When stream index is -1, FFmpeg interprets the target in AV_TIME_BASE.
     inputContext.seekFile(-1, startTs, 0);
 
     outputContext.writeHeader();
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
           continue;      // not keyframe, skip
         started = true;  // start copying this stream
       }
-      // 用 seek 起始位置做偏移，使输出时间戳从 0 开始
+      // Offset timestamps by the seek start so output starts from zero.
       auto startTsInStream = TimeBaseUtils::rescaleTs(startTs, AV_TIME_BASE_Q,
                                                       inputStream->time_base);
 

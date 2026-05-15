@@ -19,7 +19,7 @@ struct FFMPEG_WRAPPER_EXPORT AVFrameUndefHelper {
 };
 
 struct FFMPEG_WRAPPER_EXPORT AVFrameDeleter {
-  void operator()(AVFrame* frame) const;
+  void operator()(AVFrame*& frame) const;
 };
 
 }  // namespace detail
@@ -37,7 +37,9 @@ class FFMPEG_WRAPPER_EXPORT AVFrameWrap
   void setVideoBaseInfo(const VideoBaseInfo& info);
   void setAudioBaseInfo(const AudioBaseInfo& info);
 
-  void getBuffer();
+  // Allocates buffers using the frame fields already set by the caller.
+  // Call unref() before setting those fields when reusing a frame.
+  void allocBuffer();
 
   void unref();
 

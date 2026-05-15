@@ -1,17 +1,13 @@
 #include "FFmpegWrapper/AVPacketWrap.h"
 
-extern "C" {
-#include "libavcodec/packet.h"
-#include "libavutil/error.h"
-}
-
 using namespace FFmpegWrapper;
 
 void detail::AVPacketUnrefHelper::operator()() const {
+  if (!packet) return;
   av_packet_unref(packet);
 }
 
-void detail::AVPacketDeleter::operator()(AVPacket* pkt) const {
+void detail::AVPacketDeleter::operator()(AVPacket*& pkt) const {
   if (pkt) av_packet_free(&pkt);
 }
 
@@ -24,7 +20,11 @@ AVPacketWrap::AVPacketWrap()
 AVPacketWrap::AVPacketWrap(AVPacket* ptr)
     : WrapperBase(ptr, detail::AVPacketDeleter()) {}
 
-void AVPacketWrap::unref() { av_packet_unref(m_ptr); }
+void AVPacketWrap::unref() {
+  if (m_ptr) {
+    av_packet_unref(m_ptr);
+  }
+}
 
 ScopeGuard<detail::AVPacketUnrefHelper> AVPacketWrap::scopeUnref() {
   return ScopeGuard<detail::AVPacketUnrefHelper>{

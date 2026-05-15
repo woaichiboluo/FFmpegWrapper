@@ -2,10 +2,6 @@
 
 #include "Common.h"
 
-extern "C" {
-#include <libavformat/avformat.h>
-}
-
 namespace FFmpegWrapper {
 
 class AVStreamView : public detail::ViewBase<AVStream> {

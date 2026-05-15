@@ -6,7 +6,7 @@
 
 using namespace FFmpegWrapper;
 
-void detail::AVCodecContextDeleter::operator()(AVCodecContext* ctx) const {
+void detail::AVCodecContextDeleter::operator()(AVCodecContext*& ctx) const {
   if (!ctx) return;
   avcodec_free_context(&ctx);
 }

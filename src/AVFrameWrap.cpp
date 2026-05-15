@@ -1,13 +1,8 @@
 #include "FFmpegWrapper/AVFrameWrap.h"
 
 #include "FFmpegWrapper/Common.h"
-#include "libavutil/channel_layout.h"
 
 using namespace FFmpegWrapper;
-
-extern "C" {
-#include <libavutil/frame.h>
-}
 
 void detail::AVFrameUndefHelper::operator()() const {
   if (frame) {
@@ -15,7 +10,7 @@ void detail::AVFrameUndefHelper::operator()() const {
   }
 }
 
-void detail::AVFrameDeleter::operator()(AVFrame* frame) const {
+void detail::AVFrameDeleter::operator()(AVFrame*& frame) const {
   if (!frame) return;
   av_frame_free(&frame);
 }
@@ -55,7 +50,7 @@ void AVFrameWrap::setAudioBaseInfo(const AudioBaseInfo& info) {
   av_channel_layout_copy(&m_ptr->ch_layout, &info.channelLayout);
 }
 
-void AVFrameWrap::getBuffer() {
+void AVFrameWrap::allocBuffer() {
   if (!m_ptr) return;
   FFMPEG_WRAPPER_ERROR_CHECK(av_frame_get_buffer(m_ptr, 0),
                              "Failed to allocate buffer for AVFrame");
@@ -72,8 +67,10 @@ void AVFrameWrap::dumpFrameToRawBytes(std::vector<uint8_t>& out) const {
     FFMPEG_WRAPPER_RET_ERROR_CHECK(ret,
                                    "Failed to dump video frame to raw bytes");
   } else if (isAudio) {
+    const uint8_t* const* audioData =
+        m_ptr->extended_data ? m_ptr->extended_data : m_ptr->data;
     int ret = CodecUtils::audioCopyToBuffer(
-        out, m_ptr->data, m_ptr->linesize,
+        out, audioData, m_ptr->linesize,
         static_cast<AVSampleFormat>(m_ptr->format), m_ptr->nb_samples,
         m_ptr->ch_layout.nb_channels);
     FFMPEG_WRAPPER_RET_ERROR_CHECK(ret,

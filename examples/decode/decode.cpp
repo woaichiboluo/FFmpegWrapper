@@ -89,8 +89,7 @@ class Decoder {
     }
     // open decoder context
     auto& decoder = decoderPair.second;
-    decoder.initDecoder(codec);
-    auto& codecContext = decoder.getCodecContextMutable();
+    auto& codecContext = decoder.initDecoderContext(codec);
     codecContext.open(inputStream->codecpar);
     printf("Stream base info:%s\n",
            video ? codecContext.getVideoBaseInfo().dump().data()

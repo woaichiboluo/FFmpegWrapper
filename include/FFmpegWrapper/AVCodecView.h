@@ -5,11 +5,6 @@
 #include "Common.h"
 #include "Utils.h"
 
-extern "C" {
-#include "libavcodec/avcodec.h"
-#include "libavcodec/codec.h"
-}
-
 struct AVCodec;
 
 #define GET_SUPPORTED_CONFIG_METHOD(RetType, FuncSuffix, ConfigValue)   \

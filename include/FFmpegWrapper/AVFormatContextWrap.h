@@ -9,19 +9,35 @@ struct AVFormatContext;
 
 namespace FFmpegWrapper {
 
-class FFMPEG_WRAPPER_EXPORT AVFormatContextWrap
-    : public detail::WrapperBase<AVFormatContext, void (*)(AVFormatContext*)> {
- public:
+namespace detail {
+
+struct FFMPEG_WRAPPER_EXPORT AVFormatContextDeleter {
   enum Type { Input, Output, NotSet };
 
+  void operator()(AVFormatContext*& ctx) const noexcept;
+
+  Type type{NotSet};
+};
+
+}  // namespace detail
+
+class FFMPEG_WRAPPER_EXPORT AVFormatContextWrap
+    : public detail::WrapperBase<AVFormatContext,
+                                 detail::AVFormatContextDeleter> {
+ public:
+  using Type = detail::AVFormatContextDeleter::Type;
+  static constexpr Type Input = detail::AVFormatContextDeleter::Input;
+  static constexpr Type Output = detail::AVFormatContextDeleter::Output;
+  static constexpr Type NotSet = detail::AVFormatContextDeleter::NotSet;
+
   AVFormatContextWrap();
-  explicit AVFormatContextWrap(AVFormatContext* ctx);
-  ~AVFormatContextWrap() override;
+  AVFormatContextWrap(AVFormatContext* ctx, Type type);
+  ~AVFormatContextWrap() override = default;
 
   AVFormatContextWrap(AVFormatContextWrap&&) noexcept = default;
   AVFormatContextWrap& operator=(AVFormatContextWrap&&) noexcept = default;
 
-  Type getType() const { return m_type; }
+  Type getType() const { return m_deleter.type; }
 
   static AVFormatContextWrap openOutput(const std::string& url);
   static AVFormatContextWrap openInput(const std::string& url);
@@ -65,8 +81,6 @@ class FFMPEG_WRAPPER_EXPORT AVFormatContextWrap
   // av_find_best_stream()
   int findBestStream(AVMediaType type);
 
- private:
-  Type m_type{NotSet};
 };
 
 }  // namespace FFmpegWrapper

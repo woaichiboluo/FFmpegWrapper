@@ -27,8 +27,8 @@ int main(int argc, char** argv) {
     auto inputDecoderCodec =
         AVCodecView::findDecoder(inputStream->codecpar->codec_id);
     CodecDecoder inputDecoder;
-    inputDecoder.initDecoder(inputDecoderCodec);
-    auto& inputDecoderContext = inputDecoder.getCodecContextMutable();
+    auto& inputDecoderContext =
+        inputDecoder.initDecoderContext(inputDecoderCodec);
     inputDecoderContext.open(inputStream->codecpar);
     auto inputAudioBaseInfo = inputDecoderContext.getAudioBaseInfo();
     printf("Input: %s\n", inputAudioBaseInfo.dump().data());
@@ -61,43 +61,25 @@ int main(int argc, char** argv) {
       outputContext.interleavedWriteFrame(cbData.packet);
     });
 
-    // prepare fifo
-    AVAudioFifoWrap audioFifo(outputAudioBaseInfo,
-                              outputEncoderContext->frame_size * 8);
-    // prepare frame for fifo, use encoder frame size as fifo write size
-    AVFrameWrap frameForFifo;
-    frameForFifo.setAudioBaseInfo(outputAudioBaseInfo);
-    frameForFifo->nb_samples = outputEncoderContext->frame_size;
-    frameForFifo.getBuffer();
+    FixedAudioSizeHelper fixedAudioSizeHelper;
+    fixedAudioSizeHelper.init(outputAudioBaseInfo,
+                              outputEncoderContext->frame_size);
     int64_t writedSamples = 0;
+    fixedAudioSizeHelper.setOnFrameReady([&](AVFrameWrap& frame) {
+      frame->pts = writedSamples;
+      writedSamples += frame->nb_samples;
+      outputEncoder.encode(frame);
+    });
 
     inputDecoder.setDecodeCallback([&](CodecDecoder::DecodeData& cbData) {
       if (!cbData.isFlush()) {
         auto& outFrame = cbData.frame;
         printf("Decoded frame, nb_samples: %d\n", outFrame->nb_samples);
-        void** inData = reinterpret_cast<void**>(outFrame->data);
-        audioFifo.ensureEnoughWrite(inData, outFrame->nb_samples);
-        while (audioFifo.size() >= outputEncoderContext->frame_size) {
-          void** outData = reinterpret_cast<void**>(frameForFifo->data);
-          audioFifo.read(outData, frameForFifo->nb_samples);
-          frameForFifo->pts = writedSamples;
-          writedSamples += frameForFifo->nb_samples;
-          outputEncoder.encode(frameForFifo);
-        }
+        fixedAudioSizeHelper.push(outFrame);
       } else {
         // flush decoder
         printf("Flushing decoder...\n");
-        // drain audio fifo
-        while (audioFifo.size() > 0) {
-          void** outData = reinterpret_cast<void**>(frameForFifo->data);
-          int nbSamples =
-              std::min(audioFifo.size(), outputEncoderContext->frame_size);
-          audioFifo.read(outData, nbSamples);
-          frameForFifo->nb_samples = nbSamples;
-          frameForFifo->pts = writedSamples;
-          writedSamples += nbSamples;
-          outputEncoder.encode(frameForFifo);
-        }
+        fixedAudioSizeHelper.flush();
         outputEncoder.flush();
       }
     });

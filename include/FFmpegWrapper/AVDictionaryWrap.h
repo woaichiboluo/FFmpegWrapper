@@ -6,10 +6,6 @@
 
 #include "Common.h"
 
-extern "C" {
-#include <libavutil/dict.h>
-}
-
 struct AVDictionary;
 struct AVDictionaryEntry;
 
@@ -64,7 +60,7 @@ class FFMPEG_WRAPPER_EXPORT AVDitionaryIterator {
 };
 
 struct FFMPEG_WRAPPER_EXPORT AVDictionaryDeleter {
-  void operator()(AVDictionary* dict) const noexcept {
+  void operator()(AVDictionary*& dict) const noexcept {
     if (dict) av_dict_free(&dict);
   }
 };
@@ -86,7 +82,7 @@ class FFMPEG_WRAPPER_EXPORT AVDictionaryWrap
                                "Failed to set dictionary entry");
   }
 
-  void setInt(const char* key, int64_t value, int flags = 0) {
+  void set(const char* key, int64_t value, int flags = 0) {
     FFMPEG_WRAPPER_ERROR_CHECK(av_dict_set_int(&m_ptr, key, value, flags),
                                "Failed to set dictionary int entry");
   }

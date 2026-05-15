@@ -2,13 +2,9 @@
 
 #include "FFmpegWrapper/Common.h"
 
-extern "C" {
-#include <libavutil/audio_fifo.h>
-}
-
 using namespace FFmpegWrapper;
 
-void detail::AVAudioFifoDeleter::operator()(AVAudioFifo* fifo) const {
+void detail::AVAudioFifoDeleter::operator()(AVAudioFifo*& fifo) const {
   if (fifo) {
     av_audio_fifo_free(fifo);
   }
